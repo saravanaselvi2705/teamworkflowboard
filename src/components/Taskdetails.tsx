@@ -1,5 +1,7 @@
-
-import type { Task, TaskStatus } from "../types/task";
+import React, { useState } from "react";
+import type { Task, TaskPriority, TaskStatus } from "../types/task";
+import { Badge, type BadgeVariant, Button, ConfirmDialog, Modal } from "./ui";
+import { formatDateTime, formatRelativeTime } from "../utils/date";
 
 interface TaskDetailsProps {
   task: Task;
@@ -9,7 +11,11 @@ interface TaskDetailsProps {
   onMove: (id: string, status: TaskStatus) => void;
 }
 
-const statuses: TaskStatus[] = ["todo", "in-progress", "done"];
+const statuses: { status: TaskStatus; label: string }[] = [
+  { status: "backlog", label: "Backlog" },
+  { status: "in-progress", label: "In Progress" },
+  { status: "done", label: "Done" },
+];
 
 export default function TaskDetails({
   task,
@@ -18,151 +24,156 @@ export default function TaskDetails({
   onDelete,
   onMove,
 }: TaskDetailsProps) {
-  const currentIndex = statuses.indexOf(task.status);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  const statusLabel = {
-    todo: "To Do",
-    "in-progress": "In Progress",
-    done: "Done",
-  }[task.status];
+  const priorityVariantMap: Record<TaskPriority, BadgeVariant> = {
+    high: "danger",
+    medium: "warning",
+    low: "neutral",
+  };
 
-  function handleDelete() {
-    if (window.confirm(`Delete "${task.title}"?`)) {
-      onDelete(task.id);
-      onClose();
-    }
-  }
+  const statusVariantMap: Record<TaskStatus, BadgeVariant> = {
+    backlog: "neutral",
+    "in-progress": "primary",
+    done: "success",
+  };
 
-  function handleEdit() {
-    onEdit(task);
+  function handleDeleteConfirmed() {
+    onDelete(task.id);
+    setShowDeleteConfirm(false);
+    onClose();
   }
 
   return (
-    <div
-      className="details-overlay"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <section
-        className="details-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="details-title"
+    <>
+      <Modal
+        isOpen={true}
+        onClose={onClose}
+        title={task.title}
+        description="Task Details & Workflow Actions"
+        size="md"
       >
-        <header className="details-header">
-          <div>
-            <p className="details-eyebrow">TASK DETAILS</p>
-            <h2 id="details-title">{task.title}</h2>
-          </div>
-
-          <button
-            type="button"
-            className="details-close"
-            onClick={onClose}
-            aria-label="Close task details"
-          >
-            ×
-          </button>
-        </header>
-
-        <div className="details-body">
+        <div className="details-content">
           <div className="details-badges">
-            <span className={`priority priority-${task.priority}`}>
-              {task.priority} priority
-            </span>
+            <Badge variant={priorityVariantMap[task.priority]} size="md">
+              {task.priority.toUpperCase()} PRIORITY
+            </Badge>
 
-            <span className={`status-badge status-${task.status}`}>
-              {statusLabel}
+            <Badge variant={statusVariantMap[task.status]} size="md">
+              {statuses.find((s) => s.status === task.status)?.label ?? task.status}
+            </Badge>
+
+            <span className="details-timestamp">
+              Updated {formatRelativeTime(task.updatedAt || task.createdAt)}
             </span>
           </div>
 
           <section className="details-section">
-            <h3>Description</h3>
+            <h3 className="details-heading">Description</h3>
             <p className="details-description">
               {task.description || "No description provided."}
             </p>
           </section>
 
-          <section className="details-section">
-            <h3>Task information</h3>
+          {task.tags && task.tags.length > 0 && (
+            <section className="details-section">
+              <h3 className="details-heading">Tags</h3>
+              <div className="details-tags">
+                {task.tags.map((tag) => (
+                  <Badge key={tag} variant="default" size="sm">
+                    #{tag}
+                  </Badge>
+                ))}
+              </div>
+            </section>
+          )}
 
+          <section className="details-section">
+            <h3 className="details-heading">Task Information</h3>
             <dl className="details-grid">
               <dt>Assignee</dt>
-              <dd>{task.assignee || "Unassigned"}</dd>
+              <dd>
+                <strong>{task.assignee || "Unassigned"}</strong>
+              </dd>
 
-              <dt>Due date</dt>
-              <dd>{task.dueDate || "No due date"}</dd>
-
-              <dt>Task ID</dt>
-              <dd>{task.id}</dd>
+              <dt>Due Date</dt>
+              <dd>{task.dueDate || "No due date set"}</dd>
 
               <dt>Created</dt>
+              <dd>{formatDateTime(task.createdAt)}</dd>
+
+              <dt>Last Updated</dt>
+              <dd>{formatDateTime(task.updatedAt || task.createdAt)}</dd>
+
+              <dt>Task ID</dt>
               <dd>
-                {Number.isNaN(Date.parse(task.createdAt))
-                  ? "Unknown"
-                  : new Date(task.createdAt).toLocaleString()}
+                <code>{task.id}</code>
               </dd>
             </dl>
           </section>
 
           <section className="details-section">
-            <h3>Workflow status</h3>
-
-            <div className="details-status-actions">
-              {statuses.map((status, index) => (
-                <button
-                  type="button"
-                  key={status}
-                  className={
-                    task.status === status
-                      ? "status-option status-option-active"
-                      : "status-option"
-                  }
-                  onClick={() => onMove(task.id, status)}
-                >
-                  {index + 1}.{" "}
-                  {status === "todo"
-                    ? "To Do"
-                    : status === "in-progress"
-                      ? "In Progress"
-                      : "Done"}
-                </button>
-              ))}
+            <h3 className="details-heading">Workflow Status</h3>
+            <div className="details-status-actions" role="group" aria-label="Change workflow status">
+              {statuses.map((s, index) => {
+                const isActive = task.status === s.status;
+                return (
+                  <button
+                    key={s.status}
+                    type="button"
+                    className={`status-option ${
+                      isActive ? "status-option-active" : ""
+                    }`}
+                    onClick={() => onMove(task.id, s.status)}
+                    aria-pressed={isActive}
+                  >
+                    <span className="status-step-num">{index + 1}</span>
+                    <span>{s.label}</span>
+                    {isActive && <span className="status-current-badge">Current</span>}
+                  </button>
+                );
+              })}
             </div>
           </section>
         </div>
 
-        <footer className="details-footer">
-          <button
+        <div className="details-modal-footer">
+          <Button
             type="button"
-            className="btn-danger"
-            onClick={handleDelete}
+            variant="destructive"
+            onClick={() => setShowDeleteConfirm(true)}
           >
-            Delete
-          </button>
+            Delete Task
+          </Button>
 
-          <div className="details-footer-right">
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={onClose}
-            >
+          <div className="details-modal-right">
+            <Button type="button" variant="secondary" onClick={onClose}>
               Close
-            </button>
-
-            <button
+            </Button>
+            <Button
               type="button"
-              className="btn-primary"
-              onClick={handleEdit}
+              variant="primary"
+              onClick={() => {
+                onEdit(task);
+                onClose();
+              }}
             >
-              Edit task
-            </button>
+              Edit Task
+            </Button>
           </div>
-        </footer>
-      </section>
-    </div>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Task"
+        message={`Are you sure you want to delete "${task.title}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+        onConfirm={handleDeleteConfirmed}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
+    </>
   );
 }

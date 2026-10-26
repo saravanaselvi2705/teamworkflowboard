@@ -1,8 +1,8 @@
-
-import { useState } from "react";
+import React, { useState } from "react";
 import type { DragEvent } from "react";
 import type { Task, TaskStatus } from "../types/task";
 import TaskCard from "./Taskcard";
+import { Badge } from "./ui";
 
 interface BoardProps {
   tasks: Task[];
@@ -10,12 +10,13 @@ interface BoardProps {
   onEdit: (task: Task) => void;
   onDelete: (id: string) => void;
   onMove: (id: string, status: TaskStatus) => void;
+  onCreateTaskInColumn?: (status: TaskStatus) => void;
 }
 
-const columns: { status: TaskStatus; title: string }[] = [
-  { status: "todo", title: "To Do" },
-  { status: "in-progress", title: "In Progress" },
-  { status: "done", title: "Done" },
+const columns: { status: TaskStatus; title: string; description: string }[] = [
+  { status: "backlog", title: "Backlog", description: "Tasks planned for future sprints" },
+  { status: "in-progress", title: "In Progress", description: "Currently being worked on" },
+  { status: "done", title: "Done", description: "Completed and verified" },
 ];
 
 export default function Board({
@@ -24,6 +25,7 @@ export default function Board({
   onEdit,
   onDelete,
   onMove,
+  onCreateTaskInColumn,
 }: BoardProps) {
   const [dragOver, setDragOver] = useState<TaskStatus | null>(null);
 
@@ -33,52 +35,72 @@ export default function Board({
   ) {
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
-    setDragOver(status);
+    if (dragOver !== status) {
+      setDragOver(status);
+    }
+  }
+
+  function handleDragLeave(
+    event: DragEvent<HTMLElement>,
+    status: TaskStatus
+  ) {
+    if (event.currentTarget.contains(event.relatedTarget as Node)) {
+      return;
+    }
+    if (dragOver === status) {
+      setDragOver(null);
+    }
   }
 
   function handleDrop(
     event: DragEvent<HTMLElement>,
-    status: TaskStatus
+    targetStatus: TaskStatus
   ) {
     event.preventDefault();
-
+    setDragOver(null);
     const taskId = event.dataTransfer.getData("text/plain");
 
     if (taskId) {
-      onMove(taskId, status);
+      onMove(taskId, targetStatus);
     }
-
-    setDragOver(null);
   }
 
   return (
-    <div className="board">
+    <section className="board-grid" aria-label="Task workflow board">
       {columns.map((column) => {
-        const columnTasks = tasks.filter(
-          (task) => task.status === column.status
-        );
+        const columnTasks = tasks.filter((task) => task.status === column.status);
+        const isTarget = dragOver === column.status;
 
         return (
-          <section
+          <div
             key={column.status}
-            className={`board-column ${
-              dragOver === column.status ? "drag-over" : ""
+            className={`board-column board-column--${column.status} ${
+              isTarget ? "board-column--drag-over" : ""
             }`}
-            onDragOver={(event) =>
-              handleDragOver(event, column.status)
-            }
-            onDragLeave={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                setDragOver(null);
-              }
-            }}
+            onDragOver={(event) => handleDragOver(event, column.status)}
+            onDragLeave={(event) => handleDragLeave(event, column.status)}
             onDrop={(event) => handleDrop(event, column.status)}
+            aria-label={`${column.title} column with ${columnTasks.length} tasks`}
           >
             <header className="column-header">
-              <h2>{column.title}</h2>
-              <span className="task-count">
-                {columnTasks.length}
-              </span>
+              <div className="column-header-title">
+                <h2>{column.title}</h2>
+                <Badge variant="neutral" size="sm">
+                  {columnTasks.length}
+                </Badge>
+              </div>
+
+              {onCreateTaskInColumn && (
+                <button
+                  type="button"
+                  className="column-add-btn"
+                  title={`Add task to ${column.title}`}
+                  aria-label={`Add task to ${column.title}`}
+                  onClick={() => onCreateTaskInColumn(column.status)}
+                >
+                  +
+                </button>
+              )}
             </header>
 
             <div className="column-tasks">
@@ -94,16 +116,18 @@ export default function Board({
                   />
                 ))
               ) : (
-                <p className="empty-column">
-                  {dragOver === column.status
-                    ? "Drop task here"
-                    : "No tasks yet"}
-                </p>
+                <div className="empty-column">
+                  <p>
+                    {isTarget
+                      ? "Drop task here to move"
+                      : `No tasks in ${column.title}`}
+                  </p>
+                </div>
               )}
             </div>
-          </section>
+          </div>
         );
       })}
-    </div>
+    </section>
   );
 }

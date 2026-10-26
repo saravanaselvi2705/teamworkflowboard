@@ -1,7 +1,8 @@
-
-import { useState } from "react";
+import React, { useState } from "react";
 import type { DragEvent } from "react";
-import type { Task, TaskStatus } from "../types/task";
+import type { Task, TaskPriority, TaskStatus } from "../types/task";
+import { Badge, type BadgeVariant, Button } from "./ui";
+import { formatRelativeTime } from "../utils/date";
 
 interface TaskCardProps {
   task: Task;
@@ -11,7 +12,7 @@ interface TaskCardProps {
   onMove: (id: string, status: TaskStatus) => void;
 }
 
-const statuses: TaskStatus[] = ["todo", "in-progress", "done"];
+const statuses: TaskStatus[] = ["backlog", "in-progress", "done"];
 
 export default function TaskCard({
   task,
@@ -28,19 +29,36 @@ export default function TaskCard({
     event.dataTransfer.effectAllowed = "move";
   }
 
+  const priorityVariantMap: Record<TaskPriority, BadgeVariant> = {
+    high: "danger",
+    medium: "warning",
+    low: "neutral",
+  };
+
+  const statusTitleMap: Record<TaskStatus, string> = {
+    backlog: "Backlog",
+    "in-progress": "In Progress",
+    done: "Done",
+  };
+
   return (
     <article
       className="task-card"
       draggable
       onDragStart={handleDragStart}
+      aria-label={`Task: ${task.title}`}
     >
       <div className="task-card-header">
-        <span className="drag-handle" title="Drag to move task">
+        <span className="drag-handle" title="Drag to move task" aria-hidden="true">
           ⠿
         </span>
 
-        <span className={`priority priority-${task.priority}`}>
-          {task.priority}
+        <Badge variant={priorityVariantMap[task.priority]} size="sm">
+          {task.priority.toUpperCase()}
+        </Badge>
+
+        <span className="task-relative-time" title={new Date(task.updatedAt || task.createdAt).toLocaleString()}>
+          {formatRelativeTime(task.updatedAt || task.createdAt)}
         </span>
 
         <div className="task-menu-wrapper">
@@ -55,9 +73,10 @@ export default function TaskCard({
           </button>
 
           {menuOpen && (
-            <div className="task-menu">
+            <div className="task-menu" role="menu">
               <button
                 type="button"
+                role="menuitem"
                 onClick={() => {
                   setMenuOpen(false);
                   onView(task);
@@ -68,6 +87,7 @@ export default function TaskCard({
 
               <button
                 type="button"
+                role="menuitem"
                 onClick={() => {
                   setMenuOpen(false);
                   onEdit(task);
@@ -78,6 +98,7 @@ export default function TaskCard({
 
               <button
                 type="button"
+                role="menuitem"
                 className="task-menu-delete"
                 onClick={() => {
                   setMenuOpen(false);
@@ -97,64 +118,66 @@ export default function TaskCard({
         onClick={() => onView(task)}
         aria-label={`View details for ${task.title}`}
       >
-        <h3>{task.title}</h3>
+        <h3 className="task-card-title">{task.title}</h3>
 
         {task.description && (
-          <p className="task-description">
-            {task.description}
-          </p>
+          <p className="task-description">{task.description}</p>
         )}
 
-        <div className="task-card-details">
-          <span>
-            <strong>Assignee:</strong>{" "}
-            {task.assignee || "Unassigned"}
+        {task.tags && task.tags.length > 0 && (
+          <div className="task-card-tags" aria-label="Task tags">
+            {task.tags.map((tag) => (
+              <Badge key={tag} variant="default" size="sm">
+                #{tag}
+              </Badge>
+            ))}
+          </div>
+        )}
+
+        <div className="task-card-meta">
+          <span className="task-assignee">
+            <span className="assignee-avatar" aria-hidden="true">
+              {(task.assignee || "U").slice(0, 1).toUpperCase()}
+            </span>
+            <span className="assignee-name">{task.assignee || "Unassigned"}</span>
           </span>
 
           {task.dueDate && (
-            <span>
-              <strong>Due:</strong> {task.dueDate}
+            <span className="task-due-date" title={`Due: ${task.dueDate}`}>
+              📅 {task.dueDate}
             </span>
           )}
         </div>
-
-        <span className="view-task-hint">View task details →</span>
       </button>
 
       <div className="task-card-actions">
-        <button
+        <Button
           type="button"
-          className="btn-secondary move-button"
-          disabled={currentIndex === 0}
-          aria-label="Move to previous status"
-          title="Previous status"
-          onClick={() =>
-            onMove(task.id, statuses[currentIndex - 1])
-          }
+          variant="secondary"
+          size="sm"
+          className="move-button"
+          disabled={currentIndex <= 0}
+          aria-label={`Move to ${currentIndex > 0 ? statusTitleMap[statuses[currentIndex - 1]] : "previous status"}`}
+          title={currentIndex > 0 ? `Move to ${statusTitleMap[statuses[currentIndex - 1]]}` : undefined}
+          onClick={() => onMove(task.id, statuses[currentIndex - 1])}
         >
           ←
-        </button>
+        </Button>
 
-        <span className="task-status-label">
-          {task.status === "todo"
-            ? "To Do"
-            : task.status === "in-progress"
-              ? "In Progress"
-              : "Done"}
-        </span>
+        <span className="task-status-label">{statusTitleMap[task.status]}</span>
 
-        <button
+        <Button
           type="button"
-          className="btn-secondary move-button"
-          disabled={currentIndex === statuses.length - 1}
-          aria-label="Move to next status"
-          title="Next status"
-          onClick={() =>
-            onMove(task.id, statuses[currentIndex + 1])
-          }
+          variant="secondary"
+          size="sm"
+          className="move-button"
+          disabled={currentIndex >= statuses.length - 1}
+          aria-label={`Move to ${currentIndex < statuses.length - 1 ? statusTitleMap[statuses[currentIndex + 1]] : "next status"}`}
+          title={currentIndex < statuses.length - 1 ? `Move to ${statusTitleMap[statuses[currentIndex + 1]]}` : undefined}
+          onClick={() => onMove(task.id, statuses[currentIndex + 1])}
         >
           →
-        </button>
+        </Button>
       </div>
     </article>
   );
